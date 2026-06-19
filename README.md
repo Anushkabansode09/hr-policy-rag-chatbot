@@ -1,101 +1,163 @@
-# HR Policy Chatbot 🤖📋
+# 📋 HR Policy RAG Chatbot
 
-A Retrieval-Augmented Generation (RAG) chatbot that answers employee questions based on company HR policy documents.
+A Retrieval-Augmented Generation (RAG) chatbot that answers employee questions about company HR policies, grounded entirely in uploaded policy documents. Built with a production-style architecture: containerized FastAPI backend, Streamlit frontend, and a vector-search retrieval pipeline.
 
-Built with LangChain, ChromaDB, Groq (Llama 3), and Streamlit.
-
----
-
-## How It Works
-
-```
-PDF Documents
-    ↓ PyPDFLoader
-Raw Text (pages)
-    ↓ RecursiveCharacterTextSplitter
-Chunks (500 chars, 50 overlap)
-    ↓ sentence-transformers (all-MiniLM-L6-v2)
-Vectors
-    ↓ ChromaDB (persisted on disk)
-
-At query time:
-User Question → embed → ChromaDB similarity search → top 4 chunks
-→ Groq (Llama 3) → grounded answer + source attribution
-```
+[![Python](https://img.shields.io/badge/Python-3.11-blue)](https://www.python.org/)
+[![LangChain](https://img.shields.io/badge/LangChain-0.3.25-green)](https://www.langchain.com/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-API-009688)](https://fastapi.tiangolo.com/)
+[![Docker](https://img.shields.io/badge/Docker-Containerized-2496ED)](https://www.docker.com/)
+[![Groq](https://img.shields.io/badge/LLM-Llama%203.1%20via%20Groq-orange)](https://groq.com/)
 
 ---
 
-## Tech Stack
+## 🧠 What It Does
 
-| Component | Tool |
+Employees ask natural-language questions like *"How many sick days am I allowed?"* or *"What is the code of conduct?"* — the chatbot retrieves the most relevant chunks from the HR policy PDFs using vector similarity search, then uses an LLM to generate a grounded, accurate answer with cited source pages. If the answer isn't in the documents, it says so explicitly instead of hallucinating.
+
+---
+
+## 🏗️ Architecture
+
+```
+HR Policy PDFs
+      │
+      ▼
+[ingest.py] ── PyPDFLoader → RecursiveCharacterTextSplitter → HuggingFace Embeddings
+      │
+      ▼
+[ChromaDB] (persistent vector store)
+      │
+      ▼
+User Question ──► [rag_pipeline.py] ──► Retriever (top-k similarity search)
+                          │
+                          ▼
+                  Groq LLM (Llama 3.1) + Conversation Memory
+                          │
+                          ▼
+              Answer + Source Chunks (with page numbers)
+                          │
+            ┌─────────────┴─────────────┐
+            ▼                           ▼
+   [app.py] Streamlit UI       [api.py] FastAPI REST endpoint
+```
+
+Both interfaces share the same underlying RAG chain, containerized together via Docker Compose.
+
+---
+
+## ⚙️ Tech Stack
+
+| Layer | Technology |
 |---|---|
-| LLM | Llama 3 8B via Groq API |
-| Embeddings | sentence-transformers (all-MiniLM-L6-v2) |
-| Vector Store | ChromaDB (local persistent) |
-| Framework | LangChain |
-| UI | Streamlit |
+| LLM | Llama 3.1 (via Groq API) |
+| Orchestration | LangChain |
+| Vector Store | ChromaDB |
+| Embeddings | sentence-transformers (`all-MiniLM-L6-v2`) |
+| Backend API | FastAPI |
+| Frontend | Streamlit |
+| Containerization | Docker, Docker Compose |
+| PDF Parsing | PyPDF |
 
 ---
 
-## Setup
+## 🚀 Running Locally
 
-### 1. Clone and install dependencies
+### Option 1 — Docker (recommended)
+
 ```bash
-git clone https://github.com/Anushkabansode09/hr-policy-chatbot
-cd hr-policy-chatbot
-pip install -r requirements.txt
+git clone https://github.com/Anushkabansode09/hr-policy-rag-chatbot.git
+cd hr-policy-rag-chatbot
 ```
 
-### 2. Add your Groq API key
-```bash
-# Edit .env file
-GROQ_API_KEY=your_key_here
+Create a `.env` file in the root:
 ```
-Get a free key at: https://console.groq.com
-
-### 3. Add HR policy PDFs
-```bash
-mkdir sample_docs
-# copy your PDF files into sample_docs/
+GROQ_API_KEY=your_groq_api_key_here
 ```
 
-### 4. Run ingestion (one time per document)
+Add your HR policy PDFs to `sample_docs/`, then run ingestion once (outside Docker, to populate the vector store):
 ```bash
+pip install -r requirements.txt --break-system-packages
 python ingest.py
 ```
 
-### 5. Launch the app
+Then build and start both services:
 ```bash
-streamlit run app.py
+docker compose up --build
+```
+
+- FastAPI Swagger docs: **http://localhost:8000/docs**
+- Streamlit UI: **http://localhost:8501**
+
+### Option 2 — Without Docker
+
+```bash
+pip install -r requirements.txt
+python ingest.py          # one-time: builds the vector store
+python -m streamlit run app.py     # Streamlit UI
+python -m uvicorn api:app --reload # FastAPI backend
 ```
 
 ---
 
-## Project Structure
+## 🔌 API Usage
+
+**POST** `/chat`
+
+```bash
+curl -X POST http://localhost:8000/chat \
+  -H "Content-Type: application/json" \
+  -d '{"question": "What is the leave policy?"}'
+```
+
+**Response:**
+```json
+{
+  "answer": "According to the HR policy, ...",
+  "sources": [
+    {
+      "content": "5.5.6 The leave will be available only to...",
+      "source": "sample_docs/HR Policy Manual 2023.pdf",
+      "page": 82
+    }
+  ]
+}
+```
+
+---
+
+## 📸 Screenshots
+
+> _Add a screenshot of the Streamlit chat UI and the Swagger docs here._
+
+---
+
+## 🗂️ Project Structure
 
 ```
-hr-policy-chatbot/
-├── app.py               # Streamlit UI
-├── rag_pipeline.py      # RAG chain (retriever + LLM + memory)
-├── ingest.py            # PDF → chunks → ChromaDB
+hr-policy-rag-chatbot/
+├── api.py              # FastAPI REST backend
+├── app.py               # Streamlit chat UI
+├── ingest.py             # PDF loading, chunking, embedding, ChromaDB storage
+├── rag_pipeline.py        # Core RAG chain: retriever + LLM + memory
 ├── requirements.txt
-├── .env                 # GROQ_API_KEY (not committed)
-├── .gitignore
-└── sample_docs/         # Add HR PDF files here
+├── Dockerfile
+├── docker-compose.yml
+├── sample_docs/          # HR policy PDFs (input documents)
+└── chroma_store/          # Persisted vector DB (gitignored, generated by ingest.py)
 ```
 
 ---
 
-## Features
+## 🔮 Possible Improvements
 
-- Multi-turn conversation with memory
-- Source attribution (shows which document chunks were used)
-- Persistent vector store (no re-ingestion needed on restart)
-- Handles multiple PDF documents
-- Graceful error handling
+- Swap `ConversationBufferMemory` for `RunnableWithMessageHistory` (current LangChain recommendation)
+- Add authentication on the FastAPI endpoint
+- Deploy to Render/Railway for a live public demo URL
+- Support multi-document upload via the UI instead of a static folder
 
 ---
 
-## Author
+## 👤 Author
 
-Anushka Bansode — [github.com/Anushkabansode09](https://github.com/Anushkabansode09)
+**Anushka Bansode**
+[GitHub](https://github.com/Anushkabansode09) · [LinkedIn](https://www.linkedin.com/in/anushka-bansode-0b3666280) · [Portfolio](https://anushkabansode09.github.io)
