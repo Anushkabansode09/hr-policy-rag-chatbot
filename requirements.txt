@@ -1,0 +1,9 @@
+langchain==0.3.25
+langchain-community==0.3.24
+langchain-groq==0.3.2
+chromadb==0.6.3
+sentence-transformers==3.4.1
+pypdf==5.4.0
+streamlit==1.45.0
+python-dotenv==1.0.1
+hnswlib==0.8.0
